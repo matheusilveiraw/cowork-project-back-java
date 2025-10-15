@@ -97,7 +97,7 @@ public class DeskRentalController {
                 return createErrorResponse("Data de início não pode ser após a data de término", HttpStatus.BAD_REQUEST);
             }
 
-            if (rentalRequest.getStartPeriodDeskRentals().isBefore(LocalDateTime.now())) {
+            if (rentalRequest.getStartPeriodDeskRentals().isBefore(LocalDateTime.now().toLocalDate().atStartOfDay())) {
                 return createErrorResponse("Data de início não pode ser no passado", HttpStatus.BAD_REQUEST);
             }
 
