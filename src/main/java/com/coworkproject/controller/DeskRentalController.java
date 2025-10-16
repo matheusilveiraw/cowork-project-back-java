@@ -33,14 +33,24 @@ public class DeskRentalController {
         this.rentalPlanRepository = rentalPlanRepository;
     }
 
-    // GET ALL - Buscar todos os aluguéis
+    // GET ALL - Buscar todos os aluguéis OU filtrar por mesa
     @GetMapping
-    public ResponseEntity<Map<String, Object>> getAllDeskRentals() {
-        List<DeskRental> rentals = repository.findAll();
+    public ResponseEntity<Map<String, Object>> getDeskRentals(@RequestParam(required = false) Integer deskId) {
+        List<DeskRental> rentals;
+
+        if (deskId != null) {
+            // Se deskId foi fornecido, filtra por mesa
+            rentals = repository.findByDeskIdDesks(deskId);
+        } else {
+            // Se não, retorna todos os aluguéis
+            rentals = repository.findAll();
+        }
 
         Map<String, Object> response = new HashMap<>();
         response.put("success", true);
-        response.put("message", rentals.isEmpty() ? "Nenhum aluguel encontrado" : "Aluguéis recuperados com sucesso");
+        response.put("message", rentals.isEmpty() ?
+                (deskId != null ? "Nenhum aluguel encontrado para esta mesa" : "Nenhum aluguel encontrado")
+                : "Aluguéis recuperados com sucesso");
         response.put("data", rentals);
         response.put("count", rentals.size());
 
@@ -242,7 +252,7 @@ public class DeskRentalController {
         return ResponseEntity.ok(response);
     }
 
-    // GET BY DESK - Buscar aluguéis por mesa
+    // GET BY DESK - Buscar aluguéis por mesa (endpoint alternativo)
     @GetMapping("/desk/{deskId}")
     public ResponseEntity<Map<String, Object>> getDeskRentalsByDesk(@PathVariable Integer deskId) {
         List<DeskRental> rentals = repository.findByDeskIdDesks(deskId);
