@@ -140,7 +140,7 @@ public class DeskRentalController {
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
-            response.put("message", "Aluguel criado com sucesso!");
+            response.put("message", "Mesa alugada com sucesso!");
             response.put("data", savedRental);
 
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
