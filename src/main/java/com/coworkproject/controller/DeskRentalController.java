@@ -22,16 +22,183 @@ public class DeskRentalController {
     private final DeskRepository deskRepository;
     private final CustomerRepository customerRepository;
     private final RentalPlanRepository rentalPlanRepository;
+    private final RentalCategoryRepository rentalCategoryRepository;
 
     public DeskRentalController(DeskRentalRepository repository,
                                 DeskRepository deskRepository,
                                 CustomerRepository customerRepository,
-                                RentalPlanRepository rentalPlanRepository) {
+                                RentalPlanRepository rentalPlanRepository,
+                                RentalCategoryRepository rentalCategoryRepository) {
         this.repository = repository;
         this.deskRepository = deskRepository;
         this.customerRepository = customerRepository;
         this.rentalPlanRepository = rentalPlanRepository;
+        this.rentalCategoryRepository = rentalCategoryRepository;
     }
+
+    // POST - Criar novo aluguel (MÉTODO CORRIGIDO)
+    @PostMapping
+    public ResponseEntity<Map<String, Object>> createDeskRental(@RequestBody DeskRentalRequest rentalRequest) {
+        try {
+            // Validações das entidades relacionadas
+            Optional<Desk> desk = deskRepository.findById(rentalRequest.getIdDesks());
+            Optional<Customer> customer = customerRepository.findById(rentalRequest.getIdCustomers());
+            Optional<RentalPlan> rentalPlan = rentalPlanRepository.findById(rentalRequest.getIdRentalPlans());
+
+            if (desk.isEmpty()) {
+                return createErrorResponse("Mesa não encontrada com ID: " + rentalRequest.getIdDesks(), HttpStatus.NOT_FOUND);
+            }
+
+            if (customer.isEmpty()) {
+                return createErrorResponse("Cliente não encontrado com ID: " + rentalRequest.getIdCustomers(), HttpStatus.NOT_FOUND);
+            }
+
+            if (rentalPlan.isEmpty()) {
+                return createErrorResponse("Plano de aluguel não encontrado com ID: " + rentalRequest.getIdRentalPlans(), HttpStatus.NOT_FOUND);
+            }
+
+            // Validação de data de início
+            if (rentalRequest.getStartPeriodDeskRentals() == null) {
+                return createErrorResponse("Data de início é obrigatória", HttpStatus.BAD_REQUEST);
+            }
+
+            // Buscar a categoria do plano para calcular a data de término
+            RentalCategory rentalCategory = rentalPlan.get().getRentalCategory();
+            if (rentalCategory == null) {
+                return createErrorResponse("Categoria do plano de aluguel não encontrada", HttpStatus.NOT_FOUND);
+            }
+
+            // Calcular data de término baseada na duração da categoria
+            int durationInDays = rentalCategory.getBaseDurationInDaysRentalCategories();
+            LocalDateTime startDate = rentalRequest.getStartPeriodDeskRentals();
+
+            // Ajustar para o horário final do dia (mantendo o horário do turno se existir)
+            LocalDateTime endDate;
+            if (rentalPlan.get().getRentalShift() != null) {
+                // Se tem turno definido, usar o horário do turno
+                String endTime = rentalPlan.get().getRentalShift().getEndTimeRentalShifts().toString();
+                endDate = startDate.plusDays(durationInDays - 1); // -1 porque o dia inicial conta como 1
+                // Manter o horário do turno
+            } else {
+                // Se não tem turno, usar fim do dia
+                endDate = startDate.plusDays(durationInDays - 1)
+                        .withHour(23).withMinute(59).withSecond(59);
+            }
+
+            // Verificar conflitos de horário
+            List<DeskRental> conflictingRentals = repository.findConflictingRentals(
+                    rentalRequest.getIdDesks(),
+                    startDate,
+                    endDate
+            );
+
+            if (!conflictingRentals.isEmpty()) {
+                return createErrorResponse("A mesa já está alugada neste período", HttpStatus.CONFLICT);
+            }
+
+            // Validação de preço
+            if (rentalRequest.getTotalPriceDeskRentals() == null || rentalRequest.getTotalPriceDeskRentals().compareTo(BigDecimal.ZERO) <= 0) {
+                return createErrorResponse("Preço total deve ser maior que zero", HttpStatus.BAD_REQUEST);
+            }
+
+            // Criar o aluguel
+            DeskRental deskRental = new DeskRental();
+            deskRental.setDesk(desk.get());
+            deskRental.setCustomer(customer.get());
+            deskRental.setRentalPlan(rentalPlan.get());
+            deskRental.setStartPeriodDeskRentals(startDate);
+            deskRental.setEndPeriodDeskRentals(endDate); // Data calculada automaticamente
+            deskRental.setTotalPriceDeskRentals(rentalRequest.getTotalPriceDeskRentals());
+
+            DeskRental savedRental = repository.save(deskRental);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Mesa alugada com sucesso!");
+            response.put("data", savedRental);
+
+            return ResponseEntity.status(HttpStatus.CREATED).body(response);
+
+        } catch (Exception e) {
+            return createErrorResponse("Erro ao criar aluguel: " + e.getMessage(), HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    // PUT - Atualizar aluguel completo (MÉTODO CORRIGIDO)
+    @PutMapping("/{id}")
+    public ResponseEntity<Map<String, Object>> updateDeskRental(@PathVariable Integer id, @RequestBody DeskRentalRequest rentalRequest) {
+        Optional<DeskRental> optionalRental = repository.findById(id);
+
+        if (optionalRental.isEmpty()) {
+            return createErrorResponse("Aluguel não encontrado com ID: " + id, HttpStatus.NOT_FOUND);
+        }
+
+        try {
+            DeskRental rental = optionalRental.get();
+
+            // Validações das entidades relacionadas
+            Optional<Desk> desk = deskRepository.findById(rentalRequest.getIdDesks());
+            Optional<Customer> customer = customerRepository.findById(rentalRequest.getIdCustomers());
+            Optional<RentalPlan> rentalPlan = rentalPlanRepository.findById(rentalRequest.getIdRentalPlans());
+
+            if (desk.isEmpty()) {
+                return createErrorResponse("Mesa não encontrada com ID: " + rentalRequest.getIdDesks(), HttpStatus.NOT_FOUND);
+            }
+
+            if (customer.isEmpty()) {
+                return createErrorResponse("Cliente não encontrado com ID: " + rentalRequest.getIdCustomers(), HttpStatus.NOT_FOUND);
+            }
+
+            if (rentalPlan.isEmpty()) {
+                return createErrorResponse("Plano de aluguel não encontrado com ID: " + rentalRequest.getIdRentalPlans(), HttpStatus.NOT_FOUND);
+            }
+
+            // Buscar a categoria do plano para calcular a data de término
+            RentalCategory rentalCategory = rentalPlan.get().getRentalCategory();
+            if (rentalCategory == null) {
+                return createErrorResponse("Categoria do plano de aluguel não encontrada", HttpStatus.NOT_FOUND);
+            }
+
+            // Calcular data de término baseada na duração da categoria
+            int durationInDays = rentalCategory.getBaseDurationInDaysRentalCategories();
+            LocalDateTime startDate = rentalRequest.getStartPeriodDeskRentals();
+            LocalDateTime endDate = startDate.plusDays(durationInDays - 1)
+                    .withHour(23).withMinute(59).withSecond(59);
+
+            // Verificar conflitos de horário (excluindo o próprio aluguel)
+            List<DeskRental> conflictingRentals = repository.findConflictingRentals(
+                    rentalRequest.getIdDesks(),
+                    startDate,
+                    endDate
+            ).stream().filter(r -> !r.getIdDeskRentals().equals(id)).toList();
+
+            if (!conflictingRentals.isEmpty()) {
+                return createErrorResponse("A mesa já está alugada neste período", HttpStatus.CONFLICT);
+            }
+
+            // Atualizar o aluguel
+            rental.setDesk(desk.get());
+            rental.setCustomer(customer.get());
+            rental.setRentalPlan(rentalPlan.get());
+            rental.setStartPeriodDeskRentals(startDate);
+            rental.setEndPeriodDeskRentals(endDate); // Data calculada automaticamente
+            rental.setTotalPriceDeskRentals(rentalRequest.getTotalPriceDeskRentals());
+
+            DeskRental updatedRental = repository.save(rental);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Aluguel atualizado com sucesso!");
+            response.put("data", updatedRental);
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            return createErrorResponse("Erro ao atualizar aluguel: " + e.getMessage(), HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    // ... (os outros métodos permanecem iguais) ...
 
     // GET ALL - Buscar todos os aluguéis OU filtrar por mesa
     @GetMapping
@@ -39,10 +206,8 @@ public class DeskRentalController {
         List<DeskRental> rentals;
 
         if (deskId != null) {
-            // Se deskId foi fornecido, filtra por mesa
             rentals = repository.findByDeskIdDesks(deskId);
         } else {
-            // Se não, retorna todos os aluguéis
             rentals = repository.findAll();
         }
 
@@ -74,146 +239,6 @@ public class DeskRentalController {
             response.put("message", "Aluguel não encontrado com ID: " + id);
             response.put("data", null);
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
-        }
-    }
-
-    // POST - Criar novo aluguel
-    @PostMapping
-    public ResponseEntity<Map<String, Object>> createDeskRental(@RequestBody DeskRentalRequest rentalRequest) {
-        try {
-            // Validações das entidades relacionadas
-            Optional<Desk> desk = deskRepository.findById(rentalRequest.getIdDesks());
-            Optional<Customer> customer = customerRepository.findById(rentalRequest.getIdCustomers());
-            Optional<RentalPlan> rentalPlan = rentalPlanRepository.findById(rentalRequest.getIdRentalPlans());
-
-            if (desk.isEmpty()) {
-                return createErrorResponse("Mesa não encontrada com ID: " + rentalRequest.getIdDesks(), HttpStatus.NOT_FOUND);
-            }
-
-            if (customer.isEmpty()) {
-                return createErrorResponse("Cliente não encontrado com ID: " + rentalRequest.getIdCustomers(), HttpStatus.NOT_FOUND);
-            }
-
-            if (rentalPlan.isEmpty()) {
-                return createErrorResponse("Plano de aluguel não encontrado com ID: " + rentalRequest.getIdRentalPlans(), HttpStatus.NOT_FOUND);
-            }
-
-            // Validação de datas
-            if (rentalRequest.getStartPeriodDeskRentals() == null || rentalRequest.getEndPeriodDeskRentals() == null) {
-                return createErrorResponse("Datas de início e término são obrigatórias", HttpStatus.BAD_REQUEST);
-            }
-
-            if (rentalRequest.getStartPeriodDeskRentals().isAfter(rentalRequest.getEndPeriodDeskRentals())) {
-                return createErrorResponse("Data de início não pode ser após a data de término", HttpStatus.BAD_REQUEST);
-            }
-
-            if (rentalRequest.getStartPeriodDeskRentals().isBefore(LocalDateTime.now().toLocalDate().atStartOfDay())) {
-                return createErrorResponse("Data de início não pode ser no passado", HttpStatus.BAD_REQUEST);
-            }
-
-            // Verificar conflitos de horário
-            List<DeskRental> conflictingRentals = repository.findConflictingRentals(
-                    rentalRequest.getIdDesks(),
-                    rentalRequest.getStartPeriodDeskRentals(),
-                    rentalRequest.getEndPeriodDeskRentals()
-            );
-
-            if (!conflictingRentals.isEmpty()) {
-                return createErrorResponse("A mesa já está alugada neste período", HttpStatus.CONFLICT);
-            }
-
-            // Validação de preço
-            if (rentalRequest.getTotalPriceDeskRentals() == null || rentalRequest.getTotalPriceDeskRentals().compareTo(BigDecimal.ZERO) <= 0) {
-                return createErrorResponse("Preço total deve ser maior que zero", HttpStatus.BAD_REQUEST);
-            }
-
-            // Criar o aluguel
-            DeskRental deskRental = new DeskRental();
-            deskRental.setDesk(desk.get());
-            deskRental.setCustomer(customer.get());
-            deskRental.setRentalPlan(rentalPlan.get());
-            deskRental.setStartPeriodDeskRentals(rentalRequest.getStartPeriodDeskRentals());
-            deskRental.setEndPeriodDeskRentals(rentalRequest.getEndPeriodDeskRentals());
-            deskRental.setTotalPriceDeskRentals(rentalRequest.getTotalPriceDeskRentals());
-
-            DeskRental savedRental = repository.save(deskRental);
-
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", true);
-            response.put("message", "Mesa alugada com sucesso!");
-            response.put("data", savedRental);
-
-            return ResponseEntity.status(HttpStatus.CREATED).body(response);
-
-        } catch (Exception e) {
-            return createErrorResponse("Erro ao criar aluguel: " + e.getMessage(), HttpStatus.BAD_REQUEST);
-        }
-    }
-
-    // PUT - Atualizar aluguel completo
-    @PutMapping("/{id}")
-    public ResponseEntity<Map<String, Object>> updateDeskRental(@PathVariable Integer id, @RequestBody DeskRentalRequest rentalRequest) {
-        Optional<DeskRental> optionalRental = repository.findById(id);
-
-        if (optionalRental.isEmpty()) {
-            return createErrorResponse("Aluguel não encontrado com ID: " + id, HttpStatus.NOT_FOUND);
-        }
-
-        try {
-            DeskRental rental = optionalRental.get();
-
-            // Validações das entidades relacionadas
-            Optional<Desk> desk = deskRepository.findById(rentalRequest.getIdDesks());
-            Optional<Customer> customer = customerRepository.findById(rentalRequest.getIdCustomers());
-            Optional<RentalPlan> rentalPlan = rentalPlanRepository.findById(rentalRequest.getIdRentalPlans());
-
-            if (desk.isEmpty()) {
-                return createErrorResponse("Mesa não encontrada com ID: " + rentalRequest.getIdDesks(), HttpStatus.NOT_FOUND);
-            }
-
-            if (customer.isEmpty()) {
-                return createErrorResponse("Cliente não encontrado com ID: " + rentalRequest.getIdCustomers(), HttpStatus.NOT_FOUND);
-            }
-
-            if (rentalPlan.isEmpty()) {
-                return createErrorResponse("Plano de aluguel não encontrado com ID: " + rentalRequest.getIdRentalPlans(), HttpStatus.NOT_FOUND);
-            }
-
-            // Validação de datas
-            if (rentalRequest.getStartPeriodDeskRentals().isAfter(rentalRequest.getEndPeriodDeskRentals())) {
-                return createErrorResponse("Data de início não pode ser após a data de término", HttpStatus.BAD_REQUEST);
-            }
-
-            // Verificar conflitos de horário (excluindo o próprio aluguel)
-            List<DeskRental> conflictingRentals = repository.findConflictingRentals(
-                    rentalRequest.getIdDesks(),
-                    rentalRequest.getStartPeriodDeskRentals(),
-                    rentalRequest.getEndPeriodDeskRentals()
-            ).stream().filter(r -> !r.getIdDeskRentals().equals(id)).toList();
-
-            if (!conflictingRentals.isEmpty()) {
-                return createErrorResponse("A mesa já está alugada neste período", HttpStatus.CONFLICT);
-            }
-
-            // Atualizar o aluguel
-            rental.setDesk(desk.get());
-            rental.setCustomer(customer.get());
-            rental.setRentalPlan(rentalPlan.get());
-            rental.setStartPeriodDeskRentals(rentalRequest.getStartPeriodDeskRentals());
-            rental.setEndPeriodDeskRentals(rentalRequest.getEndPeriodDeskRentals());
-            rental.setTotalPriceDeskRentals(rentalRequest.getTotalPriceDeskRentals());
-
-            DeskRental updatedRental = repository.save(rental);
-
-            Map<String, Object> response = new HashMap<>();
-            response.put("success", true);
-            response.put("message", "Aluguel atualizado com sucesso!");
-            response.put("data", updatedRental);
-
-            return ResponseEntity.ok(response);
-
-        } catch (Exception e) {
-            return createErrorResponse("Erro ao atualizar aluguel: " + e.getMessage(), HttpStatus.BAD_REQUEST);
         }
     }
 

@@ -8,7 +8,6 @@ public class DeskRentalRequest {
     private Integer idCustomers;
     private Integer idRentalPlans;
     private LocalDateTime startPeriodDeskRentals;
-    private LocalDateTime endPeriodDeskRentals;
     private BigDecimal totalPriceDeskRentals;
 
     // Getters e Setters
@@ -42,14 +41,6 @@ public class DeskRentalRequest {
 
     public void setStartPeriodDeskRentals(LocalDateTime startPeriodDeskRentals) {
         this.startPeriodDeskRentals = startPeriodDeskRentals;
-    }
-
-    public LocalDateTime getEndPeriodDeskRentals() {
-        return endPeriodDeskRentals;
-    }
-
-    public void setEndPeriodDeskRentals(LocalDateTime endPeriodDeskRentals) {
-        this.endPeriodDeskRentals = endPeriodDeskRentals;
     }
 
     public BigDecimal getTotalPriceDeskRentals() {
