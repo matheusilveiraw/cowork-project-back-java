@@ -21,21 +21,21 @@ public class StandController {
         this.repository = repository;
     }
 
-    // GET ALL - Buscar todas as estantes
+    // GET ALL - Buscar todos os stands
     @GetMapping
     public ResponseEntity<Map<String, Object>> getAllStands() {
         List<Stand> stands = repository.findAll();
 
         Map<String, Object> response = new HashMap<>();
         response.put("success", true);
-        response.put("message", stands.isEmpty() ? "Nenhuma estante encontrada" : "Estantes recuperadas com sucesso");
+        response.put("message", stands.isEmpty() ? "Nenhum stand encontrado" : "Stands recuperados com sucesso");
         response.put("data", stands);
         response.put("count", stands.size());
 
         return ResponseEntity.ok(response);
     }
 
-    // GET BY ID - Buscar estante por ID
+    // GET BY ID - Buscar stand por ID
     @GetMapping("/{id}")
     public ResponseEntity<Map<String, Object>> getStandById(@PathVariable Integer id) {
         Optional<Stand> stand = repository.findById(id);
@@ -44,78 +44,102 @@ public class StandController {
 
         if (stand.isPresent()) {
             response.put("success", true);
-            response.put("message", "Estante encontrada com sucesso");
+            response.put("message", "Stand encontrado com sucesso");
             response.put("data", stand.get());
             return ResponseEntity.ok(response);
         } else {
             response.put("success", false);
-            response.put("message", "Estante não encontrada com ID: " + id);
+            response.put("message", "Stand não encontrado com ID: " + id);
             response.put("data", null);
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
         }
     }
 
-    // POST - Criar nova estante
+    // POST - Criar novo stand
     @PostMapping
     public ResponseEntity<Map<String, Object>> createStand(@RequestBody Stand stand) {
         try {
-            // Verifica se já existe estante com mesmo número
+            // Verifica se já existe stand com mesmo número
             if (repository.existsByNumberStands(stand.getNumberStands())) {
-                return createErrorResponse("Já existe uma estante com este número: " + stand.getNumberStands(), HttpStatus.CONFLICT);
+                Map<String, Object> errorResponse = new HashMap<>();
+                errorResponse.put("success", false);
+                errorResponse.put("message", "Já existe um stand com este número: " + stand.getNumberStands());
+                errorResponse.put("data", null);
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(errorResponse);
             }
 
-            // Verifica se já existe estante com mesmo nome
+            // Verifica se já existe stand com mesmo nome
             if (stand.getNameStands() != null && repository.existsByNameStands(stand.getNameStands())) {
-                return createErrorResponse("Já existe uma estante com este nome: " + stand.getNameStands(), HttpStatus.CONFLICT);
+                Map<String, Object> errorResponse = new HashMap<>();
+                errorResponse.put("success", false);
+                errorResponse.put("message", "Já existe um stand com este nome: " + stand.getNameStands());
+                errorResponse.put("data", null);
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(errorResponse);
             }
 
             // Validação básica
             if (stand.getNumberStands() == null || stand.getNumberStands() <= 0) {
-                return createErrorResponse("Número da estante deve ser maior que zero", HttpStatus.BAD_REQUEST);
+                Map<String, Object> errorResponse = new HashMap<>();
+                errorResponse.put("success", false);
+                errorResponse.put("message", "Número do stand deve ser maior que zero");
+                errorResponse.put("data", null);
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
             }
 
             Stand savedStand = repository.save(stand);
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
-            response.put("message", "Estante criada com sucesso!");
+            response.put("message", "Stand criado com sucesso!");
             response.put("data", savedStand);
 
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
 
         } catch (Exception e) {
-            return createErrorResponse("Erro ao criar estante: " + e.getMessage(), HttpStatus.BAD_REQUEST);
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("success", false);
+            errorResponse.put("message", "Erro ao criar stand: " + e.getMessage());
+            errorResponse.put("data", null);
+
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
         }
     }
 
-    // PUT - Atualizar estante completa
+    // PUT - Atualizar stand completo
     @PutMapping("/{id}")
     public ResponseEntity<Map<String, Object>> updateStand(@PathVariable Integer id, @RequestBody Stand standDetails) {
         Optional<Stand> optionalStand = repository.findById(id);
 
-        if (optionalStand.isEmpty()) {
-            return createErrorResponse("Estante não encontrada com ID: " + id, HttpStatus.NOT_FOUND);
-        }
+        Map<String, Object> response = new HashMap<>();
 
-        try {
+        if (optionalStand.isPresent()) {
             Stand stand = optionalStand.get();
 
-            // Verifica se o novo número já existe em outra estante
+            // Verifica se o novo número já existe em outro stand
             if (!stand.getNumberStands().equals(standDetails.getNumberStands()) &&
-                    repository.existsByNumberStandsAndIdStandsNot(standDetails.getNumberStands(), id)) {
-                return createErrorResponse("Já existe outra estante com este número: " + standDetails.getNumberStands(), HttpStatus.CONFLICT);
+                    repository.existsByNumberStands(standDetails.getNumberStands())) {
+                response.put("success", false);
+                response.put("message", "Já existe outro stand com este número: " + standDetails.getNumberStands());
+                response.put("data", null);
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
             }
 
-            // Verifica se o novo nome já existe em outra estante
+            // Verifica se o novo nome já existe em outro stand
             if (standDetails.getNameStands() != null &&
                     !standDetails.getNameStands().equals(stand.getNameStands()) &&
-                    repository.existsByNameStandsAndIdStandsNot(standDetails.getNameStands(), id)) {
-                return createErrorResponse("Já existe outra estante com este nome: " + standDetails.getNameStands(), HttpStatus.CONFLICT);
+                    repository.existsByNameStands(standDetails.getNameStands())) {
+                response.put("success", false);
+                response.put("message", "Já existe outro stand com este nome: " + standDetails.getNameStands());
+                response.put("data", null);
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
             }
 
             // Validação básica
             if (standDetails.getNumberStands() == null || standDetails.getNumberStands() <= 0) {
-                return createErrorResponse("Número da estante deve ser maior que zero", HttpStatus.BAD_REQUEST);
+                response.put("success", false);
+                response.put("message", "Número do stand deve ser maior que zero");
+                response.put("data", null);
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
             }
 
             // Atualiza todos os campos
@@ -124,40 +148,43 @@ public class StandController {
 
             Stand updatedStand = repository.save(stand);
 
-            Map<String, Object> response = new HashMap<>();
             response.put("success", true);
-            response.put("message", "Estante atualizada com sucesso!");
+            response.put("message", "Stand atualizado com sucesso!");
             response.put("data", updatedStand);
-
-            return ResponseEntity.ok(response);
-
-        } catch (Exception e) {
-            return createErrorResponse("Erro ao atualizar estante: " + e.getMessage(), HttpStatus.BAD_REQUEST);
-        }
-    }
-
-    // DELETE - Deletar estante
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Map<String, Object>> deleteStand(@PathVariable Integer id) {
-        Map<String, Object> response = new HashMap<>();
-
-        if (repository.existsById(id)) {
-            repository.deleteById(id);
-
-            response.put("success", true);
-            response.put("message", "Estante deletada com sucesso!");
-            response.put("data", null);
 
             return ResponseEntity.ok(response);
         } else {
             response.put("success", false);
-            response.put("message", "Estante não encontrada com ID: " + id);
+            response.put("message", "Stand não encontrado com ID: " + id);
             response.put("data", null);
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
         }
     }
 
-    // GET BY NUMBER - Buscar estante por número
+    // DELETE - Deletar stand
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Map<String, Object>> deleteStand(@PathVariable Integer id) {
+        Map<String, Object> response = new HashMap<>();
+
+        if (repository.existsById(id)) {
+            // Aqui você pode adicionar validações (ex: verificar se existem aluguéis para este stand)
+
+            repository.deleteById(id);
+
+            response.put("success", true);
+            response.put("message", "Stand deletado com sucesso!");
+            response.put("data", null);
+
+            return ResponseEntity.ok(response);
+        } else {
+            response.put("success", false);
+            response.put("message", "Stand não encontrado com ID: " + id);
+            response.put("data", null);
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+        }
+    }
+
+    // GET BY NUMBER - Buscar stand por número
     @GetMapping("/number/{number}")
     public ResponseEntity<Map<String, Object>> getStandByNumber(@PathVariable Integer number) {
         Optional<Stand> stand = repository.findByNumberStands(number);
@@ -166,18 +193,18 @@ public class StandController {
 
         if (stand.isPresent()) {
             response.put("success", true);
-            response.put("message", "Estante encontrada com sucesso");
+            response.put("message", "Stand encontrado com sucesso");
             response.put("data", stand.get());
             return ResponseEntity.ok(response);
         } else {
             response.put("success", false);
-            response.put("message", "Estante não encontrada com número: " + number);
+            response.put("message", "Stand não encontrado com número: " + number);
             response.put("data", null);
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
         }
     }
 
-    // GET BY NAME - Buscar estante por nome
+    // GET BY NAME - Buscar stand por nome
     @GetMapping("/name/{name}")
     public ResponseEntity<Map<String, Object>> getStandByName(@PathVariable String name) {
         Optional<Stand> stand = repository.findByNameStands(name);
@@ -186,23 +213,14 @@ public class StandController {
 
         if (stand.isPresent()) {
             response.put("success", true);
-            response.put("message", "Estante encontrada com sucesso");
+            response.put("message", "Stand encontrado com sucesso");
             response.put("data", stand.get());
             return ResponseEntity.ok(response);
         } else {
             response.put("success", false);
-            response.put("message", "Estante não encontrada com nome: " + name);
+            response.put("message", "Stand não encontrado com nome: " + name);
             response.put("data", null);
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
         }
-    }
-
-    // Método auxiliar para criar respostas de erro
-    private ResponseEntity<Map<String, Object>> createErrorResponse(String message, HttpStatus status) {
-        Map<String, Object> errorResponse = new HashMap<>();
-        errorResponse.put("success", false);
-        errorResponse.put("message", message);
-        errorResponse.put("data", null);
-        return ResponseEntity.status(status).body(errorResponse);
     }
 }

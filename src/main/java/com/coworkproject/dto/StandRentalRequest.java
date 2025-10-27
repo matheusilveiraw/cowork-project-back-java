@@ -8,20 +8,17 @@ public class StandRentalRequest {
     private Integer idCustomers;
     private Integer idRentalPlans;
     private LocalDateTime startPeriodStandRentals;
-    private LocalDateTime endPeriodStandRentals;
     private BigDecimal totalPriceStandRentals;
 
     // Construtores
     public StandRentalRequest() {}
 
     public StandRentalRequest(Integer idStands, Integer idCustomers, Integer idRentalPlans,
-                              LocalDateTime startPeriodStandRentals, LocalDateTime endPeriodStandRentals,
-                              BigDecimal totalPriceStandRentals) {
+                              LocalDateTime startPeriodStandRentals, BigDecimal totalPriceStandRentals) {
         this.idStands = idStands;
         this.idCustomers = idCustomers;
         this.idRentalPlans = idRentalPlans;
         this.startPeriodStandRentals = startPeriodStandRentals;
-        this.endPeriodStandRentals = endPeriodStandRentals;
         this.totalPriceStandRentals = totalPriceStandRentals;
     }
 
@@ -56,14 +53,6 @@ public class StandRentalRequest {
 
     public void setStartPeriodStandRentals(LocalDateTime startPeriodStandRentals) {
         this.startPeriodStandRentals = startPeriodStandRentals;
-    }
-
-    public LocalDateTime getEndPeriodStandRentals() {
-        return endPeriodStandRentals;
-    }
-
-    public void setEndPeriodStandRentals(LocalDateTime endPeriodStandRentals) {
-        this.endPeriodStandRentals = endPeriodStandRentals;
     }
 
     public BigDecimal getTotalPriceStandRentals() {
