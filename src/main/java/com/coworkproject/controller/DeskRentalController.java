@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -62,6 +63,11 @@ public class DeskRentalController {
                 return createErrorResponse("Data de início é obrigatória", HttpStatus.BAD_REQUEST);
             }
 
+            // Verificar se o plano tem turno
+            if (rentalPlan.get().getRentalShift() == null) {
+                return createErrorResponse("Plano de aluguel não possui turno definido", HttpStatus.BAD_REQUEST);
+            }
+
             // Buscar a categoria do plano para calcular a data de término
             RentalCategory rentalCategory = rentalPlan.get().getRentalCategory();
             if (rentalCategory == null) {
@@ -72,29 +78,45 @@ public class DeskRentalController {
             int durationInDays = rentalCategory.getBaseDurationInDaysRentalCategories();
             LocalDateTime startDate = rentalRequest.getStartPeriodDeskRentals();
 
-            // Ajustar para o horário final do dia (mantendo o horário do turno se existir)
-            LocalDateTime endDate;
-            if (rentalPlan.get().getRentalShift() != null) {
-                // Se tem turno definido, usar o horário do turno
-                String endTime = rentalPlan.get().getRentalShift().getEndTimeRentalShifts().toString();
-                endDate = startDate.plusDays(durationInDays - 1); // -1 porque o dia inicial conta como 1
-                // Manter o horário do turno
-            } else {
-                // Se não tem turno, usar fim do dia
-                endDate = startDate.plusDays(durationInDays - 1)
-                        .withHour(23).withMinute(59).withSecond(59);
-            }
+            // Ajustar para o horário final considerando o turno
+            LocalTime startTime = rentalPlan.get().getRentalShift().getStartTimeRentalShifts();
+            LocalTime endTime = rentalPlan.get().getRentalShift().getEndTimeRentalShifts();
 
-            // Verificar conflitos de horário
-            List<DeskRental> conflictingRentals = repository.findConflictingRentals(
+            // Aplicar horário de início do turno
+            startDate = startDate.with(startTime);
+            // Calcular data final com horário do turno
+            LocalDateTime endDate = startDate.plusDays(durationInDays - 1).with(endTime);
+
+            System.out.println("=== VERIFICAÇÃO DE CONFLITOS POR TURNO ===");
+            System.out.println("Mesa: " + rentalRequest.getIdDesks());
+            System.out.println("Turno: " + rentalPlan.get().getRentalShift().getNameRentalShifts());
+            System.out.println("Novo aluguel - Início: " + startDate + " | Fim: " + endDate);
+            System.out.println("Plano: " + rentalPlan.get().getPlanNameRentalPlans());
+            System.out.println("Duração: " + durationInDays + " dias");
+
+            // Buscar o ID do turno do plano selecionado
+            Integer shiftId = rentalPlan.get().getRentalShift().getIdRentalShifts();
+
+            // Verificar conflitos APENAS para o mesmo turno
+            List<DeskRental> conflictingRentals = repository.findTimeRangeConflictsByShift(
                     rentalRequest.getIdDesks(),
                     startDate,
-                    endDate
+                    endDate,
+                    shiftId  // Só verifica conflitos no mesmo turno
             );
 
             if (!conflictingRentals.isEmpty()) {
-                return createErrorResponse("A mesa já está alugada neste período", HttpStatus.CONFLICT);
+                System.out.println("CONFLITOS ENCONTRADOS NO MESMO TURNO: " + conflictingRentals.size());
+                for (DeskRental conflict : conflictingRentals) {
+                    System.out.println("Conflito com aluguel ID: " + conflict.getIdDeskRentals());
+                    System.out.println("Turno conflitante: " + conflict.getRentalPlan().getRentalShift().getNameRentalShifts());
+                    System.out.println("Período: " + conflict.getStartPeriodDeskRentals() + " até " + conflict.getEndPeriodDeskRentals());
+                }
+                return createErrorResponse("A mesa já está alugada neste período para o turno " +
+                        rentalPlan.get().getRentalShift().getNameRentalShifts(), HttpStatus.CONFLICT);
             }
+
+            System.out.println("NENHUM CONFLITO ENCONTRADO PARA ESTE TURNO - CRIANDO ALUGUEL");
 
             // Validação de preço
             if (rentalRequest.getTotalPriceDeskRentals() == null || rentalRequest.getTotalPriceDeskRentals().compareTo(BigDecimal.ZERO) <= 0) {
@@ -107,7 +129,7 @@ public class DeskRentalController {
             deskRental.setCustomer(customer.get());
             deskRental.setRentalPlan(rentalPlan.get());
             deskRental.setStartPeriodDeskRentals(startDate);
-            deskRental.setEndPeriodDeskRentals(endDate); // Data calculada automaticamente
+            deskRental.setEndPeriodDeskRentals(endDate);
             deskRental.setTotalPriceDeskRentals(rentalRequest.getTotalPriceDeskRentals());
 
             DeskRental savedRental = repository.save(deskRental);
@@ -120,6 +142,8 @@ public class DeskRentalController {
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
 
         } catch (Exception e) {
+            System.out.println("ERRO AO CRIAR ALUGUEL: " + e.getMessage());
+            e.printStackTrace();
             return createErrorResponse("Erro ao criar aluguel: " + e.getMessage(), HttpStatus.BAD_REQUEST);
         }
     }
@@ -153,6 +177,11 @@ public class DeskRentalController {
                 return createErrorResponse("Plano de aluguel não encontrado com ID: " + rentalRequest.getIdRentalPlans(), HttpStatus.NOT_FOUND);
             }
 
+            // Verificar se o plano tem turno
+            if (rentalPlan.get().getRentalShift() == null) {
+                return createErrorResponse("Plano de aluguel não possui turno definido", HttpStatus.BAD_REQUEST);
+            }
+
             // Buscar a categoria do plano para calcular a data de término
             RentalCategory rentalCategory = rentalPlan.get().getRentalCategory();
             if (rentalCategory == null) {
@@ -162,18 +191,28 @@ public class DeskRentalController {
             // Calcular data de término baseada na duração da categoria
             int durationInDays = rentalCategory.getBaseDurationInDaysRentalCategories();
             LocalDateTime startDate = rentalRequest.getStartPeriodDeskRentals();
-            LocalDateTime endDate = startDate.plusDays(durationInDays - 1)
-                    .withHour(23).withMinute(59).withSecond(59);
 
-            // Verificar conflitos de horário (excluindo o próprio aluguel)
-            List<DeskRental> conflictingRentals = repository.findConflictingRentals(
+            // Ajustar para o horário final considerando o turno
+            LocalTime startTime = rentalPlan.get().getRentalShift().getStartTimeRentalShifts();
+            LocalTime endTime = rentalPlan.get().getRentalShift().getEndTimeRentalShifts();
+
+            startDate = startDate.with(startTime);
+            LocalDateTime endDate = startDate.plusDays(durationInDays - 1).with(endTime);
+
+            // Buscar o ID do turno do plano selecionado
+            Integer shiftId = rentalPlan.get().getRentalShift().getIdRentalShifts();
+
+            // Verificar conflitos APENAS para o mesmo turno (excluindo o próprio aluguel)
+            List<DeskRental> conflictingRentals = repository.findTimeRangeConflictsByShift(
                     rentalRequest.getIdDesks(),
                     startDate,
-                    endDate
+                    endDate,
+                    shiftId
             ).stream().filter(r -> !r.getIdDeskRentals().equals(id)).toList();
 
             if (!conflictingRentals.isEmpty()) {
-                return createErrorResponse("A mesa já está alugada neste período", HttpStatus.CONFLICT);
+                return createErrorResponse("A mesa já está alugada neste período para o turno " +
+                        rentalPlan.get().getRentalShift().getNameRentalShifts(), HttpStatus.CONFLICT);
             }
 
             // Atualizar o aluguel
@@ -181,7 +220,7 @@ public class DeskRentalController {
             rental.setCustomer(customer.get());
             rental.setRentalPlan(rentalPlan.get());
             rental.setStartPeriodDeskRentals(startDate);
-            rental.setEndPeriodDeskRentals(endDate); // Data calculada automaticamente
+            rental.setEndPeriodDeskRentals(endDate);
             rental.setTotalPriceDeskRentals(rentalRequest.getTotalPriceDeskRentals());
 
             DeskRental updatedRental = repository.save(rental);
@@ -197,8 +236,6 @@ public class DeskRentalController {
             return createErrorResponse("Erro ao atualizar aluguel: " + e.getMessage(), HttpStatus.BAD_REQUEST);
         }
     }
-
-    // ... (os outros métodos permanecem iguais) ...
 
     // GET ALL - Buscar todos os aluguéis OU filtrar por mesa
     @GetMapping
