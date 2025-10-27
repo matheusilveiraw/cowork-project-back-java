@@ -24,20 +24,23 @@ public class DeskRentalController {
     private final CustomerRepository customerRepository;
     private final RentalPlanRepository rentalPlanRepository;
     private final RentalCategoryRepository rentalCategoryRepository;
+    private final RentalShiftRepository rentalShiftRepository;
 
     public DeskRentalController(DeskRentalRepository repository,
                                 DeskRepository deskRepository,
                                 CustomerRepository customerRepository,
                                 RentalPlanRepository rentalPlanRepository,
-                                RentalCategoryRepository rentalCategoryRepository) {
+                                RentalCategoryRepository rentalCategoryRepository,
+                                RentalShiftRepository rentalShiftRepository) {
         this.repository = repository;
         this.deskRepository = deskRepository;
         this.customerRepository = customerRepository;
         this.rentalPlanRepository = rentalPlanRepository;
         this.rentalCategoryRepository = rentalCategoryRepository;
+        this.rentalShiftRepository = rentalShiftRepository;
     }
 
-    // POST - Criar novo aluguel (MÉTODO CORRIGIDO)
+    // POST - Criar novo aluguel (MÉTODO COMPLETAMENTE CORRIGIDO)
     @PostMapping
     public ResponseEntity<Map<String, Object>> createDeskRental(@RequestBody DeskRentalRequest rentalRequest) {
         try {
@@ -87,36 +90,49 @@ public class DeskRentalController {
             // Calcular data final com horário do turno
             LocalDateTime endDate = startDate.plusDays(durationInDays - 1).with(endTime);
 
-            System.out.println("=== VERIFICAÇÃO DE CONFLITOS POR TURNO ===");
+            System.out.println("=== VERIFICAÇÃO DE CONFLITOS POR HORÁRIO ===");
             System.out.println("Mesa: " + rentalRequest.getIdDesks());
             System.out.println("Turno: " + rentalPlan.get().getRentalShift().getNameRentalShifts());
+            System.out.println("Horário: " + startTime + " às " + endTime);
             System.out.println("Novo aluguel - Início: " + startDate + " | Fim: " + endDate);
-            System.out.println("Plano: " + rentalPlan.get().getPlanNameRentalPlans());
-            System.out.println("Duração: " + durationInDays + " dias");
 
-            // Buscar o ID do turno do plano selecionado
-            Integer shiftId = rentalPlan.get().getRentalShift().getIdRentalShifts();
-
-            // Verificar conflitos APENAS para o mesmo turno
-            List<DeskRental> conflictingRentals = repository.findTimeRangeConflictsByShift(
+            // VERIFICAÇÃO DE CONFLITOS BASEADA EM HORÁRIOS
+            List<DeskRental> conflictingRentals = repository.findTimeRangeConflicts(
                     rentalRequest.getIdDesks(),
                     startDate,
-                    endDate,
-                    shiftId  // Só verifica conflitos no mesmo turno
+                    endDate
             );
 
             if (!conflictingRentals.isEmpty()) {
-                System.out.println("CONFLITOS ENCONTRADOS NO MESMO TURNO: " + conflictingRentals.size());
+                System.out.println("CONFLITOS ENCONTRADOS: " + conflictingRentals.size());
+
+                // Verificar se os conflitos são reais (sobreposição de horários)
                 for (DeskRental conflict : conflictingRentals) {
-                    System.out.println("Conflito com aluguel ID: " + conflict.getIdDeskRentals());
-                    System.out.println("Turno conflitante: " + conflict.getRentalPlan().getRentalShift().getNameRentalShifts());
-                    System.out.println("Período: " + conflict.getStartPeriodDeskRentals() + " até " + conflict.getEndPeriodDeskRentals());
+                    boolean hasRealConflict = checkTimeOverlap(
+                            rentalPlan.get().getRentalShift(),
+                            conflict.getRentalPlan().getRentalShift()
+                    );
+
+                    if (hasRealConflict) {
+                        System.out.println("CONFLITO REAL ENCONTRADO:");
+                        System.out.println("Aluguel ID: " + conflict.getIdDeskRentals());
+                        System.out.println("Turno conflitante: " + conflict.getRentalPlan().getRentalShift().getNameRentalShifts());
+                        System.out.println("Horário conflitante: " + conflict.getRentalPlan().getRentalShift().getStartTimeRentalShifts() +
+                                " às " + conflict.getRentalPlan().getRentalShift().getEndTimeRentalShifts());
+                        System.out.println("Período: " + conflict.getStartPeriodDeskRentals() + " até " + conflict.getEndPeriodDeskRentals());
+
+                        String conflictMessage = buildConflictMessageByTime(
+                                rentalPlan.get().getRentalShift(),
+                                conflict.getRentalPlan().getRentalShift()
+                        );
+                        return createErrorResponse(conflictMessage, HttpStatus.CONFLICT);
+                    } else {
+                        System.out.println("Conflito de datas mas SEM conflito de horários - PERMITIDO");
+                    }
                 }
-                return createErrorResponse("A mesa já está alugada neste período para o turno " +
-                        rentalPlan.get().getRentalShift().getNameRentalShifts(), HttpStatus.CONFLICT);
             }
 
-            System.out.println("NENHUM CONFLITO ENCONTRADO PARA ESTE TURNO - CRIANDO ALUGUEL");
+            System.out.println("NENHUM CONFLITO REAL ENCONTRADO - CRIANDO ALUGUEL");
 
             // Validação de preço
             if (rentalRequest.getTotalPriceDeskRentals() == null || rentalRequest.getTotalPriceDeskRentals().compareTo(BigDecimal.ZERO) <= 0) {
@@ -199,20 +215,28 @@ public class DeskRentalController {
             startDate = startDate.with(startTime);
             LocalDateTime endDate = startDate.plusDays(durationInDays - 1).with(endTime);
 
-            // Buscar o ID do turno do plano selecionado
-            Integer shiftId = rentalPlan.get().getRentalShift().getIdRentalShifts();
-
-            // Verificar conflitos APENAS para o mesmo turno (excluindo o próprio aluguel)
-            List<DeskRental> conflictingRentals = repository.findTimeRangeConflictsByShift(
+            // Verificar conflitos considerando sobreposição de horários (excluindo o próprio aluguel)
+            List<DeskRental> conflictingRentals = repository.findTimeRangeConflicts(
                     rentalRequest.getIdDesks(),
                     startDate,
-                    endDate,
-                    shiftId
+                    endDate
             ).stream().filter(r -> !r.getIdDeskRentals().equals(id)).toList();
 
             if (!conflictingRentals.isEmpty()) {
-                return createErrorResponse("A mesa já está alugada neste período para o turno " +
-                        rentalPlan.get().getRentalShift().getNameRentalShifts(), HttpStatus.CONFLICT);
+                for (DeskRental conflict : conflictingRentals) {
+                    boolean hasRealConflict = checkTimeOverlap(
+                            rentalPlan.get().getRentalShift(),
+                            conflict.getRentalPlan().getRentalShift()
+                    );
+
+                    if (hasRealConflict) {
+                        String conflictMessage = buildConflictMessageByTime(
+                                rentalPlan.get().getRentalShift(),
+                                conflict.getRentalPlan().getRentalShift()
+                        );
+                        return createErrorResponse(conflictMessage, HttpStatus.CONFLICT);
+                    }
+                }
             }
 
             // Atualizar o aluguel
@@ -340,6 +364,25 @@ public class DeskRentalController {
         response.put("count", activeRentals.size());
 
         return ResponseEntity.ok(response);
+    }
+
+    // MÉTODO AUXILIAR - Verificar sobreposição de horários
+    private boolean checkTimeOverlap(RentalShift shift1, RentalShift shift2) {
+        LocalTime start1 = shift1.getStartTimeRentalShifts();
+        LocalTime end1 = shift1.getEndTimeRentalShifts();
+        LocalTime start2 = shift2.getStartTimeRentalShifts();
+        LocalTime end2 = shift2.getEndTimeRentalShifts();
+
+        // Verifica se os horários se sobrepõem
+        return start1.isBefore(end2) && end1.isAfter(start2);
+    }
+
+    // MÉTODO AUXILIAR - Construir mensagem de conflito baseada em horários
+    private String buildConflictMessageByTime(RentalShift newShift, RentalShift existingShift) {
+        return "Conflito de horários: " +
+                newShift.getNameRentalShifts() + " (" + newShift.getStartTimeRentalShifts() + " às " + newShift.getEndTimeRentalShifts() + ") " +
+                "conflita com " +
+                existingShift.getNameRentalShifts() + " (" + existingShift.getStartTimeRentalShifts() + " às " + existingShift.getEndTimeRentalShifts() + ")";
     }
 
     // Método auxiliar para criar respostas de erro

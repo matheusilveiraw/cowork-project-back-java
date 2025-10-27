@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.List;
 
 public interface DeskRentalRepository extends JpaRepository<DeskRental, Integer> {
@@ -19,16 +20,7 @@ public interface DeskRentalRepository extends JpaRepository<DeskRental, Integer>
     // Buscar aluguéis por plano
     List<DeskRental> findByRentalPlanIdRentalPlans(Integer rentalPlanId);
 
-    // Método ORIGINAL para verificar conflitos (mantido para compatibilidade)
-    @Query("SELECT dr FROM DeskRental dr WHERE dr.desk.idDesks = :deskId AND " +
-            "((dr.startPeriodDeskRentals < :endDate AND dr.endPeriodDeskRentals > :startDate))")
-    List<DeskRental> findConflictingRentals(
-            @Param("deskId") Integer deskId,
-            @Param("startDate") LocalDateTime startDate,
-            @Param("endDate") LocalDateTime endDate
-    );
-
-    // NOVO MÉTODO - Verificação de conflitos mais específica considerando horários
+    // NOVO MÉTODO - Verificação de conflitos baseada em sobreposição de horários
     @Query("SELECT dr FROM DeskRental dr WHERE dr.desk.idDesks = :deskId AND " +
             "((:startDate BETWEEN dr.startPeriodDeskRentals AND dr.endPeriodDeskRentals) OR " +
             "(:endDate BETWEEN dr.startPeriodDeskRentals AND dr.endPeriodDeskRentals) OR " +
@@ -38,20 +30,6 @@ public interface DeskRentalRepository extends JpaRepository<DeskRental, Integer>
             @Param("deskId") Integer deskId,
             @Param("startDate") LocalDateTime startDate,
             @Param("endDate") LocalDateTime endDate
-    );
-
-    // NOVO MÉTODO - Verificação de conflitos por turno específico
-    @Query("SELECT dr FROM DeskRental dr WHERE dr.desk.idDesks = :deskId AND " +
-            "((:startDate BETWEEN dr.startPeriodDeskRentals AND dr.endPeriodDeskRentals) OR " +
-            "(:endDate BETWEEN dr.startPeriodDeskRentals AND dr.endPeriodDeskRentals) OR " +
-            "(dr.startPeriodDeskRentals BETWEEN :startDate AND :endDate) OR " +
-            "(dr.endPeriodDeskRentals BETWEEN :startDate AND :endDate)) AND " +
-            "dr.rentalPlan.rentalShift.idRentalShifts = :shiftId")
-    List<DeskRental> findTimeRangeConflictsByShift(
-            @Param("deskId") Integer deskId,
-            @Param("startDate") LocalDateTime startDate,
-            @Param("endDate") LocalDateTime endDate,
-            @Param("shiftId") Integer shiftId
     );
 
     // Buscar aluguéis ativos (que estão no período de vigência)
